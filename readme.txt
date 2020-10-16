@@ -6,7 +6,7 @@
 
 
 【概要】
-ウィンドウ移動時にウィンドウを半透明にします。
+IMEがオンの時とオフの時でキャレットの点滅速度を変えます。
 TTBase もしくは 互換プログラムのプラグインとして動作します。
 
 
@@ -20,7 +20,7 @@ VC++16 の ランタイムが必要です。
 
 
 【インストール】
-本体となるプログラムによりますが、peach、TTBaseCpp等の場合はtransparent_on_move_x64.dllおよびtransparent_on_move_x64.iniを本体のインストールフォルダ以下の場所に配置してください。
+本体となるプログラムによりますが、peach、TTBaseCpp等の場合はime_status_x64.dllおよびime_status_x64.iniを本体のインストールフォルダ以下の場所に配置してください。
 hako の場合は、32bit/64bitプラグインに対応しているため、全てのファイルを本体のインストールフォルダ以下の場所に配置してください。
 
 
@@ -30,7 +30,7 @@ DLLファイル 及び .iniファイルを削除してください。
 
 
 【使用方法】
-透明度および移動時に透明化させたくないプログラムはiniファイルを編集して指定してください。
+ime_status_x64.iniファイル、ime_status_x86.iniファイルを編集して指定してください。
 
 
 【ライセンス】
@@ -40,7 +40,7 @@ http://www.kmonos.net/nysl/
 
 【謝辞】
 TTBase を生み出された K2 さん、hakoやTTBase Plugin Template を 公開されている tapetums さん、
-peach を 公開されている U さん、TTBaseCpp の作者さん、TransparentOnMove を公開されたconさんを始め、
+peach を 公開されている U さん、TTBaseCpp の作者さん、IMEStatusの作者さんを始め、
 数多くのプラグインを作られたそれぞれの作者さんたちに深い敬意と感謝を表します。
 https://osdn.jp/projects/ttbase/
 https://github.com/tapetums
@@ -50,16 +50,7 @@ http://ttbase.coresv.com/uploader/
 
 
 【更新履歴】
-2020.09.21 v0.0.0.4
- ・32bit版が正しく動作していない点を修正
-
-2020.09.20 v0.0.0.3
- ・32bit版と64bit版で設定を共有するように対応（現状どちらを優先するかは決定していないため、あまり現行ではあまり意味はない）
-
-2020.09.15 v0.0.0.2
- ・Windowsイベントフックでは正常に動作しなくなるため、通常のWindowsフックに変更
-
-2020.09.11 v0.0.0.1
+2020.10.17 v0.1.0.0
  ・初版作成
 
 
