@@ -49,9 +49,8 @@ extern "C"
 //
 //---------------------------------------------------------------------------//
 
-#if defined(_WIN64) || defined(WIN64)
 // プラグイン情報構造体のセット
-PLUGIN_INFO* WINAPI TTBEvent_InitPluginInfo(LPWSTR PluginFilename)
+PLUGIN_INFO* WINAPI TTBEvent_InitPluginInfo(LPTSTR PluginFilename)
 {
     // プラグイン情報を初期化
     g_info.Filename = CopyString(PluginFilename);
@@ -59,16 +58,6 @@ PLUGIN_INFO* WINAPI TTBEvent_InitPluginInfo(LPWSTR PluginFilename)
 
     return &g_info;
 }
-#else
-PLUGIN_INFO* WINAPI TTBEvent_InitPluginInfo(LPSTR PluginFilename)
-{
-    // プラグイン情報を初期化
-    g_info.Filename = CopyString(PluginFilename);
-    GetVersion(PluginFilename, &g_info.VersionMS, &g_info.VersionLS);
-
-    return &g_info;
-}
-#endif
 
 //---------------------------------------------------------------------------//
 
@@ -83,9 +72,8 @@ void WINAPI TTBEvent_FreePluginInfo(PLUGIN_INFO* PluginInfo)
 
 //---------------------------------------------------------------------------//
 
-#if defined(_WIN64) || defined(WIN64)
 // プラグイン初期化
-BOOL WINAPI TTBEvent_Init(LPWSTR PluginFilename, DWORD_PTR hPlugin)
+BOOL WINAPI TTBEvent_Init(LPTSTR PluginFilename, DWORD_PTR hPlugin)
 {
     RegisterMessages();
 
@@ -116,39 +104,6 @@ BOOL WINAPI TTBEvent_Init(LPWSTR PluginFilename, DWORD_PTR hPlugin)
 
     return Init();
 }
-#else
-BOOL WINAPI TTBEvent_Init(LPSTR PluginFilename, DWORD_PTR hPlugin)
-{
-    RegisterMessages();
-
-    // キャッシュのために、TTBPlugin_InitPluginInfoは呼ばれない場合がある
-    // そのため、Initでもプラグイン情報を初期化する
-    DeleteString(g_info.Filename);
-    g_info.Filename = CopyString(PluginFilename);
-
-    // 本体から、プラグインを認識するための識別コードを受け取る
-    g_hPlugin = hPlugin;
-
-  #if defined(_USRDLL) // プラグイン側で使用
-    // リソースからバージョン情報を取得
-    GetVersion(PluginFilename, &g_info.VersionMS, &g_info.VersionLS);
-
-    // API関数の取得
-    const auto hModule = ::GetModuleHandleW(nullptr);
-    (FARPROC&)TTBPlugin_GetPluginInfo       = ::GetProcAddress(hModule, "TTBPlugin_GetPluginInfo");
-    (FARPROC&)TTBPlugin_SetPluginInfo       = ::GetProcAddress(hModule, "TTBPlugin_SetPluginInfo");
-    (FARPROC&)TTBPlugin_FreePluginInfo      = ::GetProcAddress(hModule, "TTBPlugin_FreePluginInfo");
-    (FARPROC&)TTBPlugin_SetMenuProperty     = ::GetProcAddress(hModule, "TTBPlugin_SetMenuProperty");
-    (FARPROC&)TTBPlugin_GetAllPluginInfo    = ::GetProcAddress(hModule, "TTBPlugin_GetAllPluginInfo");
-    (FARPROC&)TTBPlugin_FreePluginInfoArray = ::GetProcAddress(hModule, "TTBPlugin_FreePluginInfoArray");
-    (FARPROC&)TTBPlugin_SetTaskTrayIcon     = ::GetProcAddress(hModule, "TTBPlugin_SetTaskTrayIcon");
-    (FARPROC&)TTBPlugin_WriteLog            = ::GetProcAddress(hModule, "TTBPlugin_WriteLog");
-    (FARPROC&)TTBPlugin_ExecuteCommand      = ::GetProcAddress(hModule, "TTBPlugin_ExecuteCommand");
-  #endif
-
-    return Init();
-}
-#endif
 
 //---------------------------------------------------------------------------//
 

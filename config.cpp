@@ -3,20 +3,20 @@
 
 #include <strsafe.h>
 
-LPCWSTR kMutexName = L"IMEStatusMutex";
+LPCTSTR kMutexName = TEXT("IMEStatusMutex");
 
 extern HINSTANCE    g_hInst;
 extern HANDLE       g_hShared;
-extern SHARED_DATA* g_Shared;
+extern CONFIG_DATA  g_Config;
 
-BOOL WritePrivateProfileIntW(LPCWSTR lpAppName, LPCWSTR lpKeyName, int value, LPCWSTR lpFileName) {
-	wchar_t szbuff[32];
-	wsprintfW(szbuff, L"%d", value);
-	return ::WritePrivateProfileStringW(lpAppName, lpKeyName, szbuff, lpFileName);
+BOOL WritePrivateProfileInt(LPCTSTR lpAppName, LPCTSTR lpKeyName, int value, LPCTSTR lpFileName) {
+	TCHAR szbuff[32];
+	wsprintf(szbuff, TEXT("%d"), value);
+	return ::WritePrivateProfileString(lpAppName, lpKeyName, szbuff, lpFileName);
 }
 
 config::config() : m_hMutex(NULL) {
-	m_hMutex = ::CreateMutexW(nullptr, FALSE, kMutexName);
+	m_hMutex = ::CreateMutex(nullptr, FALSE, kMutexName);
 	_ASSERT(m_hMutex);
 }
 
@@ -32,8 +32,8 @@ config& config::get_instance() {
 void config::load_config() {
 	mutex_locker lock(m_hMutex);
 
-	wchar_t inipath[MAX_PATH];
-	size_t len = ::GetModuleFileNameW(g_hInst, inipath, MAX_PATH);
+	TCHAR inipath[MAX_PATH];
+	size_t len = ::GetModuleFileName(g_hInst, inipath, MAX_PATH);
 
 	if (len < 4) {
 		return;
@@ -43,14 +43,6 @@ void config::load_config() {
 		inipath[len - 3] = L'i';
 	}
 
-#if defined(_WIN64) || defined(WIN64)
-	// g_Shared.x64_inipath = inipath;
-	::StringCchCopyW(g_Shared->x64_inipath, MAX_PATH, inipath);
-#else
-	// g_Shared.x86_inipath = inipath;
-	::StringCchCopyW(g_Shared->x86_inipath, MAX_PATH, inipath);
-#endif
-
-	g_Shared->on = ::GetPrivateProfileIntW(L"Setting", L"On", 100, inipath);
-	g_Shared->off = ::GetPrivateProfileIntW(L"Setting", L"Off", 500, inipath);
+	g_Config.on = ::GetPrivateProfileInt(TEXT("Setting"), TEXT("On"), 100, inipath);
+	g_Config.off = ::GetPrivateProfileInt(TEXT("Setting"), TEXT("Off"), 500, inipath);
 }

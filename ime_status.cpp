@@ -22,13 +22,13 @@ HHOOK  g_hHook  { nullptr };
 
 HINSTANCE    g_hInst  { nullptr };
 HANDLE       g_hShared{ nullptr };
-SHARED_DATA *g_Shared { nullptr };
+CONFIG_DATA  g_Config { NULL };
 
 // プラグインの名前
 #if defined(WIN64) || defined(_WIN64)
-LPWSTR PLUGIN_NAME  { L"IME Status for Win10 x64" };
+LPTSTR PLUGIN_NAME  { TEXT("IME Status for Win10 x64") };
 #else
-LPSTR  PLUGIN_NAME  {  "IME Status for Win10 x86" };
+LPTSTR PLUGIN_NAME  { TEXT("IME Status for Win10 x86") };
 #endif
 
 // コマンドの数
@@ -59,10 +59,10 @@ LRESULT CALLBACK CallWndProc(int nCode, WPARAM wParam, LPARAM lParam) {
             HIMC hIMC = ImmGetContext(pcw->hwnd);
             if (hIMC) {
                 if (ImmGetOpenStatus(hIMC)) {
-                    SetCaretBlinkTime(g_Shared->on);
+                    SetCaretBlinkTime(g_Config.on);
                 }
                 else {
-                    SetCaretBlinkTime(g_Shared->off);
+                    SetCaretBlinkTime(g_Config.off);
                 }
                 ImmReleaseContext(pcw->hwnd, hIMC);
             }
@@ -157,30 +157,8 @@ void __cdecl operator delete[](void* p, size_t) // C++14
 
 // DLL エントリポイント
 BOOL WINAPI DllMain(HINSTANCE hInstance, DWORD fdwReason, LPVOID lpvReserved) {
-    switch (fdwReason) {
-    case DLL_PROCESS_ATTACH:
+    if (fdwReason == DLL_PROCESS_ATTACH) {
         g_hInst = hInstance;
-        // 共有メモリを作成
-        g_hShared = ::CreateFileMappingW(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, sizeof(SHARED_DATA), FILEMAP_SHARED);
-        if (!g_hShared) {
-            WriteLog(elError, TEXT("%s: 共有メモリの作成に失敗しました"), g_info.Name);
-            return FALSE;
-        } else {
-            g_Shared = (SHARED_DATA *)::MapViewOfFile(g_hShared, FILE_MAP_WRITE, 0, 0, 0);
-            if (!g_Shared) {
-                WriteLog(elError, TEXT("%s: 共有メモリのマッピングに失敗しました"), g_info.Name);
-                return FALSE;
-            } else if (GetLastError() != ERROR_ALREADY_EXISTS) {
-                ::SecureZeroMemory((PVOID)g_Shared, sizeof(SHARED_DATA));
-            }
-        }
-        break;
-
-    case DLL_PROCESS_DETACH:
-        // 共有メモリをクローズ
-        ::UnmapViewOfFile(g_Shared);
-        ::CloseHandle(g_hShared);
-        break;
     }
     return TRUE;
 }
