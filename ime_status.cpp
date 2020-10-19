@@ -20,9 +20,8 @@
 HHOOK  g_hHook  { nullptr };
 #pragma data_seg()
 
-HINSTANCE    g_hInst  { nullptr };
-HANDLE       g_hShared{ nullptr };
-CONFIG_DATA  g_Config { NULL };
+HINSTANCE    g_hInst    { nullptr };
+CONFIG_DATA  g_Config   { NULL };
 
 // プラグインの名前
 #if defined(WIN64) || defined(_WIN64)
@@ -47,7 +46,6 @@ PLUGIN_INFO g_info = {
     0,                   // ロードにかかった時間（msec）
 };
 
-
 // --------------------------------------------------------
 //    フックプロシージャ
 // --------------------------------------------------------
@@ -56,17 +54,28 @@ LRESULT CALLBACK CallWndProc(int nCode, WPARAM wParam, LPARAM lParam) {
         LPCWPSTRUCT pcw = (LPCWPSTRUCT)lParam;
         if ((pcw->message == WM_IME_NOTIFY && pcw->wParam == IMN_SETOPENSTATUS)
             || pcw->message == WM_SETFOCUS) {
-            HIMC hIMC = ImmGetContext(pcw->hwnd);
-            if (hIMC) {
-                if (ImmGetOpenStatus(hIMC)) {
-                    SetCaretBlinkTime(g_Config.on);
-                }
-                else {
-                    SetCaretBlinkTime(g_Config.off);
-                }
-                ImmReleaseContext(pcw->hwnd, hIMC);
+            GUITHREADINFO gti;
+            gti.cbSize = sizeof(GUITHREADINFO);
+            if (!GetGUIThreadInfo(NULL, &gti)) {
+                return ::CallNextHookEx(g_hHook, nCode, wParam, lParam);
             }
-    }
+            if (gti.flags & GUI_CARETBLINKING) {
+                HWND hImmWnd = ImmGetDefaultIMEWnd(gti.hwndFocus);
+                HIMC hIMC = ImmGetContext(hImmWnd);
+                // SendMessage(pcw->hwnd, WM_IME_CONTROL, IMC_GETOPENSTATUS, 0);
+                if (hIMC) {
+                    if (ImmGetOpenStatus(hIMC)) {
+                        WriteLog(elDebug, TEXT("ON: %d"), g_Config.on);
+                        SetCaretBlinkTime(g_Config.on);
+                    }
+                    else {
+                        WriteLog(elDebug, TEXT("OFF: %d"), g_Config.off);
+                        SetCaretBlinkTime(g_Config.off);
+                    }
+                    ImmReleaseContext(hImmWnd, hIMC);
+                }
+            }
+        }
     }
     return ::CallNextHookEx(g_hHook, nCode, wParam, lParam);
 }
@@ -91,7 +100,7 @@ BOOL WINAPI Init(void) {
 // TTBEvent_Unload() の内部実装
 void WINAPI Unload(void) {
     ::UnhookWindowsHookEx(g_hHook);
-    g_hHook = NULL;
+    g_hHook = nullptr;
     // ::PostMessageA(HWND_BROADCAST, WM_NULL, 0, 0);
     WriteLog(elInfo, TEXT("%s: successfully uninitialized"), g_info.Name);
 }
