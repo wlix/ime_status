@@ -76,7 +76,7 @@
     <TargetName>$(ProjectName)_$(PlatformTarget)</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <OutDir>C:\ttbase_debug\hako\$(ProjectName)</OutDir>
+    <OutDir>C:\ttbase_debug\hako-x64\$(ProjectName)</OutDir>
     <IntDir>$(ProjectDir)obj\$(Configuration)\$(PlatformTarget)\</IntDir>
     <LinkIncremental>true</LinkIncremental>
     <TargetName>$(ProjectName)_$(PlatformTarget)</TargetName>
@@ -307,6 +307,7 @@
   <ItemGroup>
     <ClCompile Include="config.cpp" />
     <ClCompile Include="ime_status.cpp" />
+    <ClCompile Include="imm_wnd.cpp" />
     <ClCompile Include="MessageDef.cpp" />
     <ClCompile Include="Plugin.cpp" />
     <ClCompile Include="Utility.cpp" />
@@ -314,9 +315,11 @@
   <ItemGroup>
     <ClInclude Include="config.hpp" />
     <ClInclude Include="ime_status.hpp" />
+    <ClInclude Include="imm_wnd.h" />
     <ClInclude Include="MessageDef.hpp" />
     <ClInclude Include="Plugin.hpp" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="tstring.hpp" />
     <ClInclude Include="Utility.hpp" />
   </ItemGroup>
   <ItemGroup>

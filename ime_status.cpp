@@ -10,6 +10,13 @@
 
 #include "config.hpp"
 
+#ifndef IMC_GETOPENSTATUS
+  #define IMC_GETOPENSTATUS 0x0005
+#endif
+
+/*typedef HWND (WINAPI* LP_IMM_GET_DEFAULT_IME_WINDOW)(HWND);
+char* function_name;*/
+
 //---------------------------------------------------------------------------//
 //
 // グローバル変数
@@ -17,11 +24,13 @@
 //---------------------------------------------------------------------------//
 
 #pragma data_seg(".SHARED_DATA")
-HHOOK  g_hHook  { nullptr };
+HHOOK  g_hHook = nullptr;
 #pragma data_seg()
 
-HINSTANCE    g_hInst    { nullptr };
-CONFIG_DATA  g_Config   { NULL };
+HINSTANCE    g_hInst = nullptr;
+CONFIG_DATA  g_Config;
+
+static HANDLE g_hThread = NULL;
 
 // プラグインの名前
 #if defined(WIN64) || defined(_WIN64)
@@ -46,6 +55,24 @@ PLUGIN_INFO g_info = {
     0,                   // ロードにかかった時間（msec）
 };
 
+LONG_PTR SetWindowLongPtrX(HWND hWnd, int nIndex, LONG_PTR dwNewLong) {
+    if (::IsWindowUnicode(hWnd))
+        return ::SetWindowLongPtrW(hWnd, nIndex, dwNewLong);
+    else
+        return ::SetWindowLongPtrA(hWnd, nIndex, dwNewLong);
+}
+
+LRESULT CallWindowProcX(WNDPROC lpPrevWndFunc, HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {
+    if (::IsWindowUnicode(hWnd))
+        return ::CallWindowProcW(lpPrevWndFunc, hWnd, Msg, wParam, lParam);
+    else
+        return ::CallWindowProcA(lpPrevWndFunc, hWnd, Msg, wParam, lParam);
+}
+
+static DWORD WINAPI ThreadFunc(LPVOID param) {
+    return GenerateImmWindow(g_hInst);
+}
+
 // --------------------------------------------------------
 //    フックプロシージャ
 // --------------------------------------------------------
@@ -56,14 +83,23 @@ LRESULT CALLBACK CallWndProc(int nCode, WPARAM wParam, LPARAM lParam) {
             || pcw->message == WM_SETFOCUS) {
             GUITHREADINFO gti;
             gti.cbSize = sizeof(GUITHREADINFO);
-            if (!GetGUIThreadInfo(NULL, &gti)) {
-                return ::CallNextHookEx(g_hHook, nCode, wParam, lParam);
+            HWND hTargetWnd = GetGUIThreadInfo(NULL, &gti) ? gti.hwndFocus : GetActiveWindow();
+            // if (gti.flags & GUI_CARETBLINKING) {
+            if (SendMessage(ImmGetDefaultIMEWnd(hTargetWnd), WM_IME_CONTROL, IMC_GETOPENSTATUS, 0)) {
+                WriteLog(elDebug, TEXT("ON: %d"), g_Config.on);
+                SetCaretBlinkTime(g_Config.on);
             }
-            if (gti.flags & GUI_CARETBLINKING) {
-                HWND hImmWnd = ImmGetDefaultIMEWnd(gti.hwndFocus);
-                HIMC hIMC = ImmGetContext(hImmWnd);
-                // SendMessage(pcw->hwnd, WM_IME_CONTROL, IMC_GETOPENSTATUS, 0);
-                if (hIMC) {
+            else {
+                WriteLog(elDebug, TEXT("OFF: %d"), g_Config.off);
+                SetCaretBlinkTime(g_Config.off);
+            }
+            // HIMC hIMC = ImmGetContext(pcw->hwnd);
+
+                /*if (GetProp(pcw->hwnd, PROP_OLDPROC) == NULL) {
+                    WNDPROC OldProc = (WNDPROC)SetWindowLongPtrX(pcw->hwnd, GWLP_WNDPROC, (LONG_PTR)WndProc);
+                    SetProp(pcw->hwnd, PROP_OLDPROC, (HANDLE)OldProc);
+                }*/
+                /* if (hIMC) {
                     if (ImmGetOpenStatus(hIMC)) {
                         WriteLog(elDebug, TEXT("ON: %d"), g_Config.on);
                         SetCaretBlinkTime(g_Config.on);
@@ -72,9 +108,9 @@ LRESULT CALLBACK CallWndProc(int nCode, WPARAM wParam, LPARAM lParam) {
                         WriteLog(elDebug, TEXT("OFF: %d"), g_Config.off);
                         SetCaretBlinkTime(g_Config.off);
                     }
-                    ImmReleaseContext(hImmWnd, hIMC);
-                }
-            }
+                    ImmReleaseContext(pcw->hwnd, hIMC);
+                } */
+            // }
         }
     }
     return ::CallNextHookEx(g_hHook, nCode, wParam, lParam);
@@ -82,7 +118,21 @@ LRESULT CALLBACK CallWndProc(int nCode, WPARAM wParam, LPARAM lParam) {
 
 // TTBEvent_Init() の内部実装
 BOOL WINAPI Init(void) {
+    DWORD tid;
+    if (g_hThread) { return FALSE; }
+    g_hThread = CreateThread(NULL, 0, ThreadFunc, 0, 0, &tid);
+
     config::get_instance().load_config();
+
+    /*if (!(g_hIMMDll = GetModuleHandle(TEXT("imm32")))) {
+        if (!(g_hIMMDll = LoadLibrary(TEXT("imm32")))) {
+            WriteLog(elError, TEXT("%s: imm32.dllのロードに失敗しました"));
+            return FALSE;
+        }
+    }
+
+
+    if ()*/
 
     g_hHook = ::SetWindowsHookEx(WH_CALLWNDPROC, CallWndProc, g_hInst, 0);
     if (!g_hHook) {

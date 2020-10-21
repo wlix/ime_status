@@ -43,6 +43,6 @@ void config::load_config() {
 		inipath[len - 3] = L'i';
 	}
 
-	g_Config.on = ::GetPrivateProfileInt(TEXT("Setting"), TEXT("On"), 100, inipath);
-	g_Config.off = ::GetPrivateProfileInt(TEXT("Setting"), TEXT("Off"), 500, inipath);
+	g_Config.on = ::GetPrivateProfileInt(TEXT("Setting"), TEXT("On"), 1000, inipath);
+	g_Config.off = ::GetPrivateProfileInt(TEXT("Setting"), TEXT("Off"), 5000, inipath);
 }
