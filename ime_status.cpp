@@ -8,11 +8,7 @@
 #include "MessageDef.hpp"
 #include "Utility.hpp"
 
-#include "config.hpp"
-
-#ifndef IMC_GETOPENSTATUS
-  #define IMC_GETOPENSTATUS 0x0005
-#endif
+#include "imm_wnd.h"
 
 /*typedef HWND (WINAPI* LP_IMM_GET_DEFAULT_IME_WINDOW)(HWND);
 char* function_name;*/
@@ -28,7 +24,7 @@ HHOOK  g_hHook = nullptr;
 #pragma data_seg()
 
 HINSTANCE    g_hInst = nullptr;
-CONFIG_DATA  g_Config;
+extern HWND  g_hImmWnd;
 
 static HANDLE g_hThread = NULL;
 
@@ -81,7 +77,8 @@ LRESULT CALLBACK CallWndProc(int nCode, WPARAM wParam, LPARAM lParam) {
         LPCWPSTRUCT pcw = (LPCWPSTRUCT)lParam;
         if ((pcw->message == WM_IME_NOTIFY && pcw->wParam == IMN_SETOPENSTATUS)
             || pcw->message == WM_SETFOCUS) {
-            GUITHREADINFO gti;
+            SendMessage(g_hImmWnd, IMM_FOCUS_AND_OPENSTATUS, pcw->message, pcw->wParam);
+            /*GUITHREADINFO gti;
             gti.cbSize = sizeof(GUITHREADINFO);
             HWND hTargetWnd = GetGUIThreadInfo(NULL, &gti) ? gti.hwndFocus : GetActiveWindow();
             // if (gti.flags & GUI_CARETBLINKING) {
@@ -92,7 +89,7 @@ LRESULT CALLBACK CallWndProc(int nCode, WPARAM wParam, LPARAM lParam) {
             else {
                 WriteLog(elDebug, TEXT("OFF: %d"), g_Config.off);
                 SetCaretBlinkTime(g_Config.off);
-            }
+            }*/
             // HIMC hIMC = ImmGetContext(pcw->hwnd);
 
                 /*if (GetProp(pcw->hwnd, PROP_OLDPROC) == NULL) {
@@ -122,7 +119,6 @@ BOOL WINAPI Init(void) {
     if (g_hThread) { return FALSE; }
     g_hThread = CreateThread(NULL, 0, ThreadFunc, 0, 0, &tid);
 
-    config::get_instance().load_config();
 
     /*if (!(g_hIMMDll = GetModuleHandle(TEXT("imm32")))) {
         if (!(g_hIMMDll = LoadLibrary(TEXT("imm32")))) {
@@ -151,6 +147,16 @@ BOOL WINAPI Init(void) {
 void WINAPI Unload(void) {
     ::UnhookWindowsHookEx(g_hHook);
     g_hHook = nullptr;
+
+    if (g_hImmWnd && IsWindow(g_hImmWnd)) {
+        SendMessage(g_hImmWnd, WM_CLOSE, 0, 0);
+    }
+    if (g_hThread) {
+        WaitForSingleObject(g_hThread, INFINITE);
+        CloseHandle(g_hThread);
+        g_hThread = 0;
+    }
+
     // ::PostMessageA(HWND_BROADCAST, WM_NULL, 0, 0);
     WriteLog(elInfo, TEXT("%s: successfully uninitialized"), g_info.Name);
 }

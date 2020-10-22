@@ -7,6 +7,10 @@
 
 #define PROP_OLDPROC    TEXT("IMEStatusProcedure")
 
+#ifndef IMC_GETOPENSTATUS
+  #define IMC_GETOPENSTATUS 0x0005
+#endif
+
 typedef struct _CONFIG_DATA {
     // 除外するウィンドウのパスの配列
     UINT on;

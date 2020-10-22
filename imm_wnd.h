@@ -1,8 +1,12 @@
 #pragma once
 
+#define IMM_FOCUS_AND_OPENSTATUS   (WM_APP + 1)
+
 #define SEARCH_PHRASE_SIZE 1024
 #define WINDOW_TEXT_SIZE   32767
 #define WINDOW_CLASS_SIZE  257
+
+int WINAPI GenerateImmWindow(HINSTANCE hInstance);
 
 class WindowSearch {
 public:
@@ -51,7 +55,7 @@ public:
 	HWND IsMatch(bool aInvert = false);
 
 	WindowSearch() // Constructor.
-		: mCriteria(0), mCriterionExcludeTitle(_T(""))
+		: mCriteria(0), mCriterionExcludeTitle(TEXT(""))
 		, mFoundCount(0), mFoundParent(NULL)
 		, mFoundChild(NULL)
 		, mCandidateParent(NULL)

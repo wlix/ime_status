@@ -1,8 +1,22 @@
 #include "tstring.hpp"
+#include "Utility.hpp"
+
+#include "config.hpp"
+#include "ime_status.hpp"
+
 #include "imm_wnd.h"
+
+CONFIG_DATA g_Config;
 
 HINSTANCE g_hImmInst = nullptr;
 HWND      g_hImmWnd  = nullptr;
+
+HWND                hwnd_focus = nullptr;
+class_and_hwnd_type cah_focus;
+TCHAR               class_name_focus[WINDOW_CLASS_SIZE] = { '\0' };
+HWND                hwnd_pre_focus = nullptr;
+class_and_hwnd_type cah_pre_focus;
+TCHAR               class_name_pre_focus[WINDOW_CLASS_SIZE] = { '\0' };
 
 HWND GetTopChild(HWND aParent) {
     if (!aParent) return aParent;
@@ -30,8 +44,7 @@ BOOL CALLBACK EnumControlFind(HWND aWnd, LPARAM lParam) {
 	return TRUE;
 }
 
-HWND ControlExist(HWND aParentWindow, LPTSTR aClassNameAndNum)
-{
+HWND ControlExist(HWND aParentWindow, LPTSTR aClassNameAndNum) {
     if (!aParentWindow)
         return NULL;
     if (!aClassNameAndNum || !*aClassNameAndNum)
@@ -67,34 +80,63 @@ BOOL CALLBACK EnumChildFindSeqNum(HWND aWnd, LPARAM lParam) {
     return TRUE;
 }
 
-BOOL ControlGetFocus(LPTSTR aTitle, LPTSTR aText) {
-    Var& output_var = *OUTPUT_VAR; // Must be resolved only once and prior to DetermineTargetWindow().  See Line::WinGetClass() for explanation.
-    output_var.Assign();  // Set default: blank for the output variable.
-    HWND target_window = GetForegroundWindow();
-    if (!target_window) { return FALSE; }
+BOOL ControlGetFocus() {
+    hwnd_focus = GetForegroundWindow();
+    if (!hwnd_focus) { return FALSE; }
 
     GUITHREADINFO guithreadInfo;
     guithreadInfo.cbSize = sizeof(GUITHREADINFO);
-    if (!GetGUIThreadInfo(GetWindowThreadProcessId(target_window, NULL), &guithreadInfo)) {
+    if (!GetGUIThreadInfo(GetWindowThreadProcessId(hwnd_focus, NULL), &guithreadInfo)) {
         return FALSE;
     }
 
-    class_and_hwnd_type cah;
-    TCHAR class_name[WINDOW_CLASS_SIZE];
-    cah.hwnd = guithreadInfo.hwndFocus;
-    cah.class_name = class_name;
-    if (!GetClassName(cah.hwnd, class_name, _countof(class_name) - 5)) {
+    cah_focus.hwnd = guithreadInfo.hwndFocus;
+    cah_focus.class_name = class_name_focus;
+    if (!GetClassName(cah_focus.hwnd, class_name_focus, _countof(class_name_focus) - 5)) {
         return FALSE;
     }
 
-    cah.class_count = 0;
-    cah.is_found = false;
-    EnumChildWindows(target_window, EnumChildFindSeqNum, (LPARAM)&cah);
-    if (!cah.is_found) { return FALSE; }
-    // Append the class sequence number onto the class name set the output param to be that value:
-    sntprintfcat(class_name, _countof(class_name), _T("%d"), cah.class_count);
-    g_ErrorLevel->Assign(ERRORLEVEL_NONE); // Indicate success.
-    return output_var.Assign(class_name);
+    // cah_focus.class_count = 0;
+    // cah_focus.is_found = false;
+    // EnumChildWindows(hwnd_focus, EnumChildFindSeqNum, (LPARAM)&cah_focus);
+    /*if (!cah_focus.is_found) { return FALSE; }
+    sntprintfcat(class_name_focus, _countof(class_name_focus), _T("%d"), cah_focus.class_count);*/
+    return TRUE;
+}
+
+LRESULT CALLBACK ImmProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    switch (msg) {
+    case WM_CREATE:
+        config::get_instance().load_config();
+        return 0;
+    case IMM_FOCUS_AND_OPENSTATUS:
+        if (ControlGetFocus()) {
+            hwnd_pre_focus = hwnd_focus;
+            cah_pre_focus = cah_focus;
+            tmemcpy(class_name_pre_focus, class_name_focus, WINDOW_CLASS_SIZE);
+
+            HIMC hIMC = ImmGetContext(hwnd_focus);
+            if (hIMC) {
+                if (SendMessage(ImmGetDefaultIMEWnd(hwnd_focus), WM_IME_CONTROL, IMC_GETOPENSTATUS, 0)) {
+                    WriteLog(elDebug, TEXT("ON: %d"), g_Config.on);
+                    SetCaretBlinkTime(g_Config.on);
+                }
+                else {
+                    WriteLog(elDebug, TEXT("OFF: %d"), g_Config.off);
+                    SetCaretBlinkTime(g_Config.off);
+                }
+                ImmReleaseContext(hwnd_focus, hIMC);
+            }
+        }
+        return 0;
+    case WM_CLOSE:
+        DestroyWindow(hwnd);
+        return 0;
+    case WM_DESTROY:
+        PostQuitMessage(0);
+        return 0;
+    }
+    return DefWindowProc(hwnd, msg, wp, lp);
 }
 
 int WINAPI GenerateImmWindow(HINSTANCE hInstance) {
@@ -103,7 +145,7 @@ int WINAPI GenerateImmWindow(HINSTANCE hInstance) {
 
     g_hImmInst = hInstance;
 
-    winc.style         = CS_HREDRAW | CS_VREDRAW;
+    winc.style         = 0;
     winc.lpfnWndProc   = ImmProc;
     winc.cbClsExtra    = winc.cbWndExtra = 0;
     winc.hInstance     = hInstance;
@@ -121,20 +163,21 @@ int WINAPI GenerateImmWindow(HINSTANCE hInstance) {
         WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT,
         CW_USEDEFAULT,
-        200,
-        200,
-        NULL,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        HWND_MESSAGE,
         NULL,
         hInstance,
         NULL);
 
     if (g_hImmWnd == NULL) { return 0; }
 
-    while (GetMessage(&msg, NULL, 0, 0)) {
+    while (GetMessage(&msg, NULL, 0, 0) > 0) {
+        TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
 
-    UnregisterClass(TEXT("ClipBoardExtClass"), hInstance);
+    UnregisterClass(TEXT("IMEStatusClass"), hInstance);
 
     return (int)msg.wParam;
 };
