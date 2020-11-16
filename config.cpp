@@ -37,7 +37,8 @@ void config::load_config() {
 
 	if (len < 4) {
 		return;
-	} else {
+	}
+	else {
 		inipath[len - 1] = L'i';
 		inipath[len - 2] = L'n';
 		inipath[len - 3] = L'i';

@@ -38,7 +38,7 @@ LPTSTR CopyString(LPCTSTR Src)
 // 文字列を削除する
 void DeleteString(LPCTSTR Str)
 {
-    if (Str != nullptr)
+    if ( Str != nullptr )
     {
         delete[] Str;
     }
@@ -49,35 +49,35 @@ void DeleteString(LPCTSTR Str)
 // プラグイン情報構造体をディープコピーして返す
 PLUGIN_INFO* CopyPluginInfo(const PLUGIN_INFO* Src)
 {
-  if (Src == nullptr) { return nullptr; }
+    if ( Src == nullptr ) { return nullptr; }
 
-  const auto info = new PLUGIN_INFO;
-  if (info == nullptr)
-  {
-    return nullptr;
-  }
-
-  // プラグイン情報のコピー
-  *info = *Src;
-
-  info->Name = CopyString(Src->Name);
-  info->Filename = CopyString(Src->Filename);
-  info->Commands = (Src->CommandCount == 0) ?
-    nullptr : new PLUGIN_COMMAND_INFO[Src->CommandCount];
-
-  // コマンド情報のコピー
-  if (info->Commands != nullptr && Src->Commands != nullptr)
-  {
-    for (size_t i = 0; i < Src->CommandCount; ++i)
+    const auto info = new PLUGIN_INFO;
+    if ( info == nullptr )
     {
-      info->Commands[i] = Src->Commands[i];
-
-      info->Commands[i].Name = CopyString(Src->Commands[i].Name);
-      info->Commands[i].Caption = CopyString(Src->Commands[i].Caption);
+        return nullptr;
     }
-  }
 
-  return info;
+    // プラグイン情報のコピー
+    *info = *Src;
+
+    info->Name     = CopyString(Src->Name);
+    info->Filename = CopyString(Src->Filename);
+    info->Commands = (Src->CommandCount == 0) ?
+                     nullptr : new PLUGIN_COMMAND_INFO[Src->CommandCount];
+
+    // コマンド情報のコピー
+    if ( info->Commands != nullptr && Src->Commands != nullptr )
+    {
+        for ( size_t i = 0; i < Src->CommandCount; ++i )
+        {
+            info->Commands[i] = Src->Commands[i];
+
+            info->Commands[i].Name    = CopyString(Src->Commands[i].Name);
+            info->Commands[i].Caption = CopyString(Src->Commands[i].Caption);
+        }
+    }
+
+    return info;
 }
 
 //---------------------------------------------------------------------------//
@@ -85,12 +85,12 @@ PLUGIN_INFO* CopyPluginInfo(const PLUGIN_INFO* Src)
 // プラグイン側で作成されたプラグイン情報構造体を破棄する
 void FreePluginInfo(PLUGIN_INFO* PluginInfo)
 {
-    if (PluginInfo == nullptr) { return; }
+    if ( PluginInfo == nullptr ) { return; }
 
     // コマンド情報構造体配列の破棄
-    if (PluginInfo->Commands != nullptr)
+    if ( PluginInfo->Commands != nullptr )
     {
-        for (size_t i = 0; i < PluginInfo->CommandCount; ++i)
+        for ( size_t i = 0; i < PluginInfo->CommandCount; ++i )
         {
             const auto pCI = &PluginInfo->Commands[i];
 
@@ -111,29 +111,29 @@ void FreePluginInfo(PLUGIN_INFO* PluginInfo)
 // バージョン情報を返す
 void GetVersion(LPTSTR Filename, DWORD* VersionMS, DWORD* VersionLS)
 {
-    if (VersionMS == nullptr || VersionLS == nullptr) { return; }
+    if ( VersionMS == nullptr || VersionLS == nullptr ) { return; }
 
     // DLL ファイルに埋め込まれたバージョンリソースのサイズを取得
     DWORD VersionHandle;
     const auto VersionSize = GetFileVersionInfoSize(Filename, &VersionHandle);
-    if (VersionSize == 0)
+    if ( VersionSize == 0 )
     {
         return;
     }
 
     // バージョンリソースを読み込む
     const auto pVersionInfo = new BYTE[VersionSize];
-    if (pVersionInfo == nullptr)
+    if ( pVersionInfo == nullptr )
     {
         return;
     }
-    if (GetFileVersionInfo(Filename, VersionHandle, VersionSize, pVersionInfo))
+    if ( GetFileVersionInfo(Filename, VersionHandle, VersionSize, pVersionInfo) )
     {
         VS_FIXEDFILEINFO* FixedFileInfo;
         UINT itemLen;
 
         // バージョンリソースからファイルバージョンを取得
-        if (VerQueryValue(pVersionInfo, TEXT("\\"), (void**)&FixedFileInfo, &itemLen))
+        if ( VerQueryValue(pVersionInfo, (LPTSTR)TEXT("\\"), (void **)&FixedFileInfo, &itemLen) )
         {
             *VersionMS = FixedFileInfo->dwFileVersionMS;
             *VersionLS = FixedFileInfo->dwFileVersionLS;
@@ -186,7 +186,7 @@ void WriteLog(ERROR_LEVEL logLevel, LPCTSTR format, ...)
       #endif
     }
     va_end(al);
-    msg[BUF_SIZE - 1] = TEXT('\0');
+    msg[BUF_SIZE - 1] = '\0';
 
     // ログの出力
     TTBPlugin_WriteLog(g_hPlugin, logLevel, msg);

@@ -12,6 +12,7 @@
 #include "Plugin.hpp"
 
 //---------------------------------------------------------------------------//
+
 LPTSTR       CopyString          (LPCTSTR Src);
 void         DeleteString        (LPCTSTR Str);
 PLUGIN_INFO* CopyPluginInfo      (const PLUGIN_INFO* Src);
@@ -24,7 +25,7 @@ BOOL         ExecutePluginCommand(LPCTSTR pluginName, INT32 CmdID);
 #if NO_WRITELOG
   #define WriteLog(logLevel, format, ...)
 #else
-    void WriteLog (ERROR_LEVEL logLevel, LPCTSTR format, ...);
+  void WriteLog (ERROR_LEVEL logLevel, LPCTSTR format, ...);
 #endif
 
 //---------------------------------------------------------------------------//

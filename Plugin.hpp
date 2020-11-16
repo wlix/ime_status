@@ -121,7 +121,7 @@ struct PLUGIN_INFO_A
 #pragma pack(pop)
 
 // UNICODE マクロの定義の有無で使用する構造体を切り分ける
-#if defined(UNICODE) || defined(_UNICODE)
+#if defined(_UNICODE) || defined(UNICODE)
   using PLUGIN_COMMAND_INFO = PLUGIN_COMMAND_INFO_W;
   using PLUGIN_INFO         = PLUGIN_INFO_W;
 #else
@@ -223,7 +223,7 @@ extern "C"
 //---------------------------------------------------------------------------//
 
 // プラグインの名前
-extern LPTSTR  PLUGIN_NAME;
+extern LPCTSTR PLUGIN_NAME;
 
 // コマンドの数
 extern DWORD COMMAND_COUNT;
@@ -250,4 +250,4 @@ void WINAPI Hook   (UINT Msg, WPARAM wParam, LPARAM lParam);
 
 //---------------------------------------------------------------------------//
 
-// Plugin.hpp
+// Plugi.hpp

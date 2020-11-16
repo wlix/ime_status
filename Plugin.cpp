@@ -90,7 +90,7 @@ BOOL WINAPI TTBEvent_Init(LPTSTR PluginFilename, DWORD_PTR hPlugin)
     GetVersion(PluginFilename, &g_info.VersionMS, &g_info.VersionLS);
 
     // API関数の取得
-    const auto hModule = ::GetModuleHandleW(nullptr);
+    const auto hModule = ::GetModuleHandle(nullptr);
     (FARPROC&)TTBPlugin_GetPluginInfo       = ::GetProcAddress(hModule, "TTBPlugin_GetPluginInfo");
     (FARPROC&)TTBPlugin_SetPluginInfo       = ::GetProcAddress(hModule, "TTBPlugin_SetPluginInfo");
     (FARPROC&)TTBPlugin_FreePluginInfo      = ::GetProcAddress(hModule, "TTBPlugin_FreePluginInfo");
