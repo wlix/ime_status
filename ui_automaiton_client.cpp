@@ -7,7 +7,6 @@ CUIAutomationClient::CUIAutomationClient()
 	hr = ::CoInitialize(NULL);
 
 	hr = m_sp_ui_automation.CoCreateInstance(__uuidof(CUIAutomation));
-	ATLASSERT(hr == S_OK);
 	ATLASSERT(m_sp_ui_automation);
 }
 

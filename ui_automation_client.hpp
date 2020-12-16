@@ -45,5 +45,5 @@ public:
 private:
 	CComPtr<IUIAutomation> m_sp_ui_automation;
 	CComObject<CUIAutomationFocusChangedEventHandler>
-		* m_focus_changed_event_handler;
+		*m_focus_changed_event_handler;
 };

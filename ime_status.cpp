@@ -1,8 +1,6 @@
 #include "pch.h"
 #include <imm.h>
 #include <atlwin.h>
-#include <Shlwapi.h>
-#pragma comment(lib, "Shlwapi.lib")
 #include <atlframe.h>
 #include <atlcrack.h>
 #include <atlmisc.h>
@@ -20,10 +18,8 @@
 #include "Utility.hpp"
 
 BOOL IsImeEnabled(HWND hWnd);
-BOOL GetConversionStatus(HWND hWnd, DWORD* pConversion);
-void FocusChangedHandler(IUIAutomationElement* sender);
-
-enum { kCaretWidth = 2, kCaretRightPadding = 2 };
+BOOL GetConversionStatus(HWND hWnd, DWORD *pConversion);
+void FocusChangedHandler(IUIAutomationElement *sender);
 
 #pragma data_seg(".SHARED_DATA")
 HHOOK  g_hHook = nullptr;
@@ -31,174 +27,44 @@ HHOOK  g_hHook = nullptr;
 
 CAppModule _Module;
 
-#if defined(WIN64) || defined(_WIN64)
-LPCTSTR CCaretWndClassName = TEXT("_CaretWndForIMEStatus_x64_");
-#else
-LPCTSTR CCaretWndClassName = TEXT("_CaretWndForIMEStatus_x86_");
-#endif
+HINSTANCE   g_hInst              = nullptr;
+CONFIG_DATA g_Config             = {};
+BOOL        g_bAPIHooked         = FALSE;
+BOOL        g_bTargetIsWow64     = FALSE;
+UINT        g_default_blink_time = 0;
 
-HINSTANCE   g_hInst       = nullptr;
-CONFIG_DATA g_Config      = {};
-BOOL        g_bAPIHooked  = FALSE;
-LONG        g_lockedConut = 0;
-HWND		g_wnd30C4     = NULL;
-
-/*class CCaretWnd : public CDoubleBufferWindowImpl<
-    CCaretWnd, CWindow, CWinTraits<WS_POPUP, WS_EX_TOOLWINDOW | WS_EX_TOPMOST>>*/
-class CCaretWnd : public CFrameWindowImpl<CCaretWnd, CWindow, CWinTraits<WS_POPUP, WS_EX_TOOLWINDOW | WS_EX_TOPMOST>> {
-
-public:
-    DECLARE_WND_CLASS(CCaretWndClassName)
-
-    const int TimerId = 1;
-    const int TimerInterval = 100;
-
-    void SetSender(IUIAutomationElement* sender) {
-        m_sp_sender = sender;
-        if (sender) {
-            SetTimer(TimerId, TimerInterval);
-            SetWindowPos(HWND_TOPMOST, 0, 0, 0, 0, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
-        }
-        else {
-            KillTimer(TimerId);
-            ShowWindow(SW_HIDE);
-        }
-    }
-
-    void ChangeIMEState(BOOL cond) {
-        if (m_ime_on != cond) {
-            m_ime_on = cond;
-            if (m_ime_on) {
-                SetCaretBlinkTime(g_Config.on);
-            }
-            else {
-                SetCaretBlinkTime(g_Config.off);
-            }
-            Invalidate(FALSE);
-        }
-    }
-
-    BEGIN_MSG_MAP_EX(CCaretWnd)
-        MSG_WM_TIMER(OnTimer)
-        MESSAGE_HANDLER_EX(WM_SHOWCARETIFNEED, OnShowCaretIfNeed)
-        CHAIN_MSG_MAP(__super)
-    END_MSG_MAP()
-
-    LRESULT OnShowCaretIfNeed(UINT, WPARAM wParam, LPARAM lParam) {
-        if (lParam != 0) {
-            SetSender(nullptr);
-            return 0;
-        }
-        ChangeIMEState(wParam != 0);
-        return 0;
-    }
-
-    /*void DoPaint(CDCHandle dc) {
-        RECT rc;
-        GetClientRect(&rc);
-        if (m_ime_on) {
-            dc.FillSolidRect(&rc, 0x00000000);
-        }
-        else {
-            dc.FillSolidRect(&rc, 0x00000000);
-        }
-    }*/
-
-    void OnTimer(UINT_PTR nIDEvent) {
-        if (nIDEvent != TimerId) { return; }
-
-        HWND hForeWnd = ::GetForegroundWindow();
-        CRect rcForeground;
-        ::GetWindowRect(hForeWnd, &rcForeground);
-
-        CRect rcBound;
-        CComPtr<IUIAutomationElement> spSender = m_sp_sender;
-        if (spSender) {
-            spSender->get_CurrentBoundingRectangle(&rcBound);
-
-            CRect rcCaret = rcBound;
-            rcCaret.left -= kCaretWidth + kCaretRightPadding;
-            rcCaret.right = rcBound.left - kCaretRightPadding;
-            MoveWindow(rcCaret);
-        }
-
-        DWORD threadId = ::GetWindowThreadProcessId(hForeWnd, nullptr);
-        GUITHREADINFO gti = { sizeof(GUITHREADINFO) };
-        ::GetGUIThreadInfo(threadId, &gti);
-        HWND HImeWnd = ::ImmGetDefaultIMEWnd(gti.hwndFocus);
-        LRESULT ret = ::SendMessage(HImeWnd, WM_IME_CONTROL, IMC_GETOPENSTATUS, 0);
-        ChangeIMEState(ret != 0);
-
-        if ((rcForeground.PtInRect(rcBound.TopLeft()) == FALSE &&
-            rcForeground.PtInRect(rcBound.BottomRight()) == FALSE)) {
-            ShowWindow(SW_HIDE);
-        }
-        else {
-            ShowWindow(SW_SHOWNOACTIVATE);
-        }
-    }
-
-private:
-    CComPtr<IUIAutomationElement> m_sp_sender;
-    BOOL m_ime_on = FALSE;
-};
-
-class WinAPI_HookManager {
-public:
-    WinAPI_HookManager() {
-        if (MH_Initialize() == MH_OK) {
-            g_bAPIHooked = WinAPIHook();
-        }
-    }
-    ~WinAPI_HookManager() {
-        if (g_bAPIHooked) {
-            WinAPIUnHook();
-            MH_Uninitialize();
-        }
-    }
-
-    BOOL WinAPIHook();
-    void WinAPIUnHook();
-
-/*private:
-    HMODULE m_hHookDll;*/
-};
-
-CCaretWnd   g_CaretWnd;
-
-typedef struct _CREATE_CARET_ARGS {
+struct CARET_INFO {
+    BOOL    bCreated = FALSE;
     HBITMAP hBmp = NULL;
-    int     width = 0;
-    int     height = 0;
-} CREATE_CARET_ARGS;
+    LONG    lockedConut = 0;
+    struct {
+        HBITMAP hBmp = NULL;
+        int     width = 0;
+        int     height = 0;
+    } args;
+} g_CaretInfo, g_PreCaretInfo;
 
-typedef struct _CARET_INFO {
-    BOOL              bCreated = FALSE;
-    HBITMAP           hBmp = NULL;
-    CREATE_CARET_ARGS args;
-} CARET_INFO;
-
-CARET_INFO        g_CaretInfo;
-
-typedef BOOL (WINAPI* pfCreateCaret) (HWND, HBITMAP, int, int);
-typedef BOOL (WINAPI* pfShowCaret)   (HWND);
-typedef BOOL (WINAPI* pfHideCaret)   (HWND);
+typedef BOOL(WINAPI* pfCreateCaret) (HWND, HBITMAP, int, int);
+typedef BOOL(WINAPI* pfShowCaret)   (HWND);
+typedef BOOL(WINAPI* pfHideCaret)   (HWND);
+typedef BOOL(WINAPI* pfDestroyCaret)();
 
 pfCreateCaret  WinAPI_CreateCaret  = NULL;
 pfShowCaret    WinAPI_ShowCaret    = NULL;
 pfHideCaret    WinAPI_HideCaret    = NULL;
+pfDestroyCaret WinAPI_DestroyCaret = NULL;
 
 std::unique_ptr<CUIAutomationClient> g_ui_automation;
 
 // プラグインの名前
 #if defined(WIN64) || defined(_WIN64)
-LPCTSTR PLUGIN_NAME  { TEXT("IME Status for Win10 x64") };
+LPCTSTR PLUGIN_NAME{ TEXT("IME Status for Win10 x64") };
 #else
-LPCTSTR PLUGIN_NAME  { TEXT("IME Status for Win10 x86") };
+LPCTSTR PLUGIN_NAME{ TEXT("IME Status for Win10 x86") };
 #endif
 
 // コマンドの数
-DWORD COMMAND_COUNT { 0 };
+DWORD COMMAND_COUNT{ 0 };
 
 // プラグインの情報
 PLUGIN_INFO g_info = {
@@ -213,6 +79,130 @@ PLUGIN_INFO g_info = {
     0,                   // ロードにかかった時間（msec）
 };
 
+LPCTSTR CCaretWndClassName = TEXT("CaretWndForIMEStatus_");
+typedef CWinTraits<WS_POPUP, WS_EX_TOOLWINDOW | WS_EX_TOPMOST>	CCaretWinTraits;
+class CCaretWnd : public CDoubleBufferWindowImpl<CCaretWnd, CWindow, CCaretWinTraits> {
+public:
+    DECLARE_WND_CLASS(CCaretWndClassName)
+
+    const int TimerId = 1;
+    const int TimerInterval = 100;
+
+    void SetSender(IUIAutomationElement* sender) {
+        m_sp_sender = sender;
+        if (sender) {
+            // WriteLog(elDebug, TEXT("SetTimer"));
+            SetTimer(TimerId, TimerInterval);
+            SetWindowPos(HWND_TOPMOST, 0, 0, 0, 0, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+        }
+        else {
+            // WriteLog(elDebug, TEXT("KillTimer"));
+            KillTimer(TimerId);
+            ShowWindow(SW_HIDE);
+        }
+    }
+
+    void ChangeIMEState(BOOL cond) {
+        // WriteLog(elDebug, TEXT("ChangeIMEState cond: %d, m_ime_on: %d"), cond, m_ime_on);
+        if (m_ime_on != cond) {
+            m_ime_on = cond;
+            if (m_ime_on) {
+                // WriteLog(elDebug, TEXT("GetBlinkTime: %d"), ::GetCaretBlinkTime());
+                if (::GetCaretBlinkTime() != g_Config.on) {
+                    // WriteLog(elDebug, TEXT("SetBlinkTime: %d"), g_Config.on);
+                    ::SetCaretBlinkTime(g_Config.on);
+                }
+            }
+            else {
+                // WriteLog(elDebug, TEXT("GetBlinkTime: %d"), ::GetCaretBlinkTime());
+                if (::GetCaretBlinkTime() != g_Config.off) {
+                    // WriteLog(elDebug, TEXT("SetBlinkTime: %d"), g_Config.off);
+                    ::SetCaretBlinkTime(g_Config.off);
+                }
+            }
+            Invalidate(FALSE);
+        }
+    }
+
+    BEGIN_MSG_MAP_EX(CCaretWnd)
+        MSG_WM_CREATE(OnCreate)
+        MESSAGE_HANDLER_EX(WM_SHOWCARETIFNEED, OnShowCaretIfNeed)
+        MSG_WM_TIMER(OnTimer)
+        CHAIN_MSG_MAP(__super)
+    END_MSG_MAP()
+
+    int OnCreate(LPCREATESTRUCT) {
+        return 0;
+    }
+
+    LRESULT OnShowCaretIfNeed(UINT, WPARAM wParam, LPARAM lParam) {
+        if (lParam != 0) {
+            SetSender(nullptr);
+            return 0;
+        }
+        // WriteLog(elDebug, TEXT("From OnShowCaretIfNeed"));
+        ChangeIMEState(wParam != 0);
+        return 0;
+    }
+
+    void DoPaint(CDCHandle dc) {
+        RECT rc;
+        GetClientRect(&rc);
+        if (m_ime_on) {
+            dc.FillSolidRect(&rc, 0x00FFFFFF);
+        }
+        else {
+            dc.FillSolidRect(&rc, 0x00FFFFFF);
+        }
+    }
+
+    void OnTimer(UINT_PTR nIDEvent) {
+        if (nIDEvent != TimerId) { return; }
+#if defined(WIN64) || defined(_WIN64)
+        if (g_bTargetIsWow64)    { return; }
+#else
+        if (!g_bTargetIsWow64)   { return; }
+#endif
+
+        HWND hForeWnd = ::GetForegroundWindow();
+        CRect rcForeground;
+        ::GetWindowRect(hForeWnd, &rcForeground);
+        DWORD threadId = ::GetWindowThreadProcessId(hForeWnd, nullptr);
+        GUITHREADINFO gti = { sizeof(GUITHREADINFO) };
+        ::GetGUIThreadInfo(threadId, &gti);
+
+        HWND HImeWnd = ::ImmGetDefaultIMEWnd(gti.hwndCaret);
+        LRESULT ret = ::SendMessage(HImeWnd, WM_IME_CONTROL, IMC_GETOPENSTATUS, 0);
+        // WriteLog(elDebug, TEXT("From Timer"));
+        ChangeIMEState(ret != 0);
+    }
+
+private:
+    CComPtr<IUIAutomationElement> m_sp_sender;
+    BOOL m_ime_on = FALSE;
+} g_CaretWnd;
+
+class WinAPI_HookManager {
+public:
+    WinAPI_HookManager() : m_hHookEngineDll(NULL) {
+        if (MH_Initialize() == MH_OK) {
+            g_bAPIHooked = WinAPIHook();
+        }
+    }
+    ~WinAPI_HookManager() {
+        if (g_bAPIHooked) {
+            WinAPIUnHook();
+            MH_Uninitialize();
+        }
+    }
+
+    BOOL WinAPIHook();
+    void WinAPIUnHook();
+
+private:
+	HMODULE m_hHookEngineDll;
+};
+
 // --------------------------------------------------------
 //    フックプロシージャ
 // --------------------------------------------------------
@@ -220,53 +210,67 @@ LRESULT CALLBACK CallWndProc(int nCode, WPARAM wParam, LPARAM lParam) {
     if (nCode == HC_ACTION) {
         LPCWPSTRUCT pcw = (LPCWPSTRUCT)lParam;
         if (pcw->message == WM_IME_NOTIFY && pcw->wParam == IMN_SETOPENSTATUS) {
-            WriteLog(elDebug, TEXT("Hook SetOpenStatus"));
-            LONG Count = g_lockedConut;
-            HWND wnd30C4 = g_wnd30C4;
-            int Width = g_CaretInfo.args.width;
-            int Height = g_CaretInfo.args.height;
-            WriteLog(elDebug, TEXT("g_wnd30C4: %d"), g_wnd30C4);
+            // WriteLog(elDebug, TEXT("Hook SetOpenStatus"));
+            int Count = g_CaretInfo.lockedConut;
+
+            HWND hForeWnd = ::GetForegroundWindow();
+            DWORD threadId = ::GetWindowThreadProcessId(hForeWnd, nullptr);
+            GUITHREADINFO gti = { sizeof(GUITHREADINFO) };
+            ::GetGUIThreadInfo(threadId, &gti);
+
+            // WriteLog(elDebug, TEXT("pcw->hwnd: %08x, gti.hwndFocus: 08x"), pcw->hwnd, gti.hwndFocus);
+            int Width = 0;
+            int Height = 0;
+            if (gti.hwndCaret) {
+                Width = gti.rcCaret.right - gti.rcCaret.left;
+                Height = gti.rcCaret.bottom - gti.rcCaret.top;
+            }
+            else {
+                Width = Height = 0;
+            }
 
             POINT pt;
             ::GetCaretPos(&pt);
             ::DestroyCaret();
-            ::CreateCaret(wnd30C4, NULL, Width, Height);
-            WriteLog(elDebug, TEXT("CreateCaret: wnd30C4: %d, Width: %d, Height: %d"), wnd30C4, Width, Height);
+            ::CreateCaret(gti.hwndFocus ? gti.hwndFocus : pcw->hwnd, NULL, Width, Height);
+            // WriteLog(elDebug, TEXT("CreateCaret: wnd30C4: %08x, Width: %d, Height: %d"), gti.hwndFocus ? gti.hwndFocus : NULL, Width, Height);
             ::SetCaretPos(pt.x, pt.y);
 
             HWND HCaretWnd = ::FindWindow(CCaretWndClassName, nullptr);
-            WriteLog(elDebug, TEXT("FindWindow"));
+            // WriteLog(elDebug, TEXT("FindWindow"));
             if (HCaretWnd) {
-                WriteLog(elDebug, TEXT("Detected CCaretWndClass: %08x"), HCaretWnd);
-                WriteLog(elDebug, TEXT("PostMessage: hwnd %08x, IsImeEnabled %d"), wnd30C4 ? wnd30C4 : pcw->hwnd, IsImeEnabled(wnd30C4 ? wnd30C4 : pcw->hwnd));
-                ::PostMessage(HCaretWnd, WM_SHOWCARETIFNEED, IsImeEnabled(wnd30C4 ? wnd30C4 : pcw->hwnd), 0);
+                // WriteLog(elDebug, TEXT("Detected CCaretWndClass: %08x"), HCaretWnd);
+                // WriteLog(elDebug, TEXT("PostMessage: hwnd %08x, IsImeEnabled %d"), gti.hwndFocus ? gti.hwndFocus : pcw->hwnd, IsImeEnabled(gti.hwndFocus ? gti.hwndFocus : pcw->hwnd));
+                ::PostMessage(HCaretWnd, WM_SHOWCARETIFNEED, IsImeEnabled(gti.hwndFocus ? gti.hwndFocus : pcw->hwnd), 0);
             }
 
-            WriteLog(elDebug, TEXT("Count: %d"), Count);
+            // WriteLog(elDebug, TEXT("Count: %d"), Count);
             if (Count > 0) {
                 for (int i = 0; i < Count; ++i) {
-                    ::ShowCaret(wnd30C4);
+                    // WriteLog(elDebug, TEXT("ShowCaret: %08x, Count: %d"), gti.hwndFocus, Count);
+                    ::ShowCaret(gti.hwndFocus);
                 }
             }
             else if (Count < 0) {
                 for (LONG i = 0; i > Count; --i) {
-                    ::HideCaret(wnd30C4);
+                    // WriteLog(elDebug, TEXT("HideCaret: %08x, Count: %d"), gti.hwndFocus, Count);
+                    ::HideCaret(gti.hwndFocus);
                 }
             }
         }
         else if (pcw->message == WM_IME_SETCONTEXT && pcw->wParam == FALSE) {
-            WriteLog(elDebug, TEXT("Hook SetContext"));
+            // WriteLog(elDebug, TEXT("Hook SetContext"));
             HIMC hContext = ::ImmGetContext(pcw->hwnd);
 
             BOOL hideCaret = (hContext == NULL);
             HWND HCaretWnd = ::FindWindow(CCaretWndClassName, nullptr);
-            WriteLog(elDebug, TEXT("Findow Window: %s"), CCaretWndClassName);
+            // WriteLog(elDebug, TEXT("Findow Window: %s"), CCaretWndClassName);
             if (HCaretWnd && hideCaret) {
-                WriteLog(elDebug, TEXT("PostMessage: WM_SHOWCARETIFNEED"));
+                // WriteLog(elDebug, TEXT("PostMessage: WM_SHOWCARETIFNEED"));
                 ::PostMessage(HCaretWnd, WM_SHOWCARETIFNEED, 0, hideCaret);
             }
         } else if (pcw->message == WM_SETFOCUS) {
-            WriteLog(elDebug, TEXT("Hook WM_SETFOCUS"));
+            // WriteLog(elDebug, TEXT("Hook WM_SETFOCUS"));
             static WinAPI_HookManager mng;
         }
     }
@@ -274,13 +278,39 @@ LRESULT CALLBACK CallWndProc(int nCode, WPARAM wParam, LPARAM lParam) {
 }
 
 void FocusChangedHandler(IUIAutomationElement* sender) {
-    WriteLog(elDebug, TEXT("Begin FocusChangedHandler sender: %08x"), sender);
-    CONTROLTYPEID	controlTypeId = 0;
+    // WriteLog(elDebug, TEXT("Begin FocusChangedHandler sender: %08x"), sender);
+
+    HWND hForeWnd = ::GetForegroundWindow();
+    DWORD processId = 0;
+    DWORD threadId = ::GetWindowThreadProcessId(hForeWnd, &processId);
+    GUITHREADINFO gti = { sizeof(GUITHREADINFO) };
+    ::GetGUIThreadInfo(threadId, &gti);
+
+    HANDLE hProcess = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processId);
+    IsWow64Process(hProcess, &g_bTargetIsWow64);
+
+    if (!gti.hwndFocus) {
+        // WriteLog(elDebug, TEXT("hwnd:%08x is 0"), gti.hwndFocus);
+        g_CaretWnd.SetSender(nullptr);
+        return;
+    }
+#if defined(WIN64) || defined(_WIN64)
+    if (g_bTargetIsWow64) {
+#else
+    if (!g_bTargetIsWow64) {
+#endif
+        // WriteLog(elDebug, TEXT("hwnd:%08x is not target architecture application"), hForeWnd);
+        // WriteLog(elDebug, TEXT("g_default_blink_time: %d"), g_default_blink_time);
+        return;
+    }
+
+    CONTROLTYPEID controlTypeId = 0;
     sender->get_CurrentControlType(&controlTypeId);
-    WriteLog(elDebug, TEXT("TypeId: %d"), controlTypeId);
-    if (controlTypeId != UIA_EditControlTypeId &&
-        controlTypeId != UIA_ComboBoxControlTypeId &&
-        controlTypeId != UIA_CustomControlTypeId) {
+    // WriteLog(elDebug, TEXT("TypeId: %d"), controlTypeId);
+    if (controlTypeId != UIA_EditControlTypeId
+        && controlTypeId != UIA_ComboBoxControlTypeId
+        && controlTypeId != UIA_CustomControlTypeId
+        && controlTypeId != UIA_PaneControlTypeId) {
         g_CaretWnd.SetSender(nullptr);
         return;
     }
@@ -313,8 +343,7 @@ void FocusChangedHandler(IUIAutomationElement* sender) {
             else {
                 CComVariant vControlType = UIA_EditControlTypeId;
                 CComPtr<IUIAutomationCondition> spCndEdit;
-                g_ui_automation->GetUIAutomation()->CreatePropertyCondition(
-                    UIA_ControlTypePropertyId, vControlType, &spCndEdit);
+                g_ui_automation->GetUIAutomation()->CreatePropertyCondition(UIA_ControlTypePropertyId, vControlType, &spCndEdit);
                 if (spCndEdit) {
                     CComPtr<IUIAutomationElement> spChildElm;
                     sender->FindFirst(
@@ -328,18 +357,17 @@ void FocusChangedHandler(IUIAutomationElement* sender) {
         }
     }
     else if (controlTypeId == UIA_EditControlTypeId) {
-        if (hEditWnd) {
+        /*if (hEditWnd) {
             TCHAR className[128] = TEXT("");
             ::GetClassName(hEditWnd, className, 128);
             if (::_tcscmp(className, TEXT("Edit")) == 0) {
                 g_CaretWnd.SetSender(nullptr);
                 return;
             }
-        }
+        }*/
 
         CComPtr<IUIAutomationValuePattern> spValuePattern;
-        sender->GetCurrentPatternAs(UIA_ValuePatternId,
-            IID_IUIAutomationValuePattern, (void**)&spValuePattern);
+        sender->GetCurrentPatternAs(UIA_ValuePatternId, IID_IUIAutomationValuePattern, (void**)&spValuePattern);
         if (spValuePattern) {
             BOOL bIsReadOnly = FALSE;
             spValuePattern->get_CurrentIsReadOnly(&bIsReadOnly);
@@ -350,24 +378,14 @@ void FocusChangedHandler(IUIAutomationElement* sender) {
         }
     }
 
-    HWND hForeWnd = ::GetForegroundWindow();
-    DWORD threadId = ::GetWindowThreadProcessId(hForeWnd, nullptr);
-    GUITHREADINFO gti = { sizeof(GUITHREADINFO) };
-    ::GetGUIThreadInfo(threadId, &gti);
-
-    if (gti.flags == GUI_CARETBLINKING && hEditWnd) {
+    if (gti.flags != GUI_CARETBLINKING && hEditWnd) {
         g_CaretWnd.SetSender(nullptr);
         return;
     }
 
-    CRect rcBounds;
-    sender->get_CurrentBoundingRectangle(&rcBounds);
-    rcBounds.left -= kCaretWidth + kCaretRightPadding;
-    rcBounds.right = rcBounds.left - kCaretRightPadding;
-    g_CaretWnd.MoveWindow(rcBounds);
-
     HWND hIMEWnd = ::ImmGetDefaultIMEWnd(gti.hwndFocus);
     BOOL ret = ::SendMessage(hIMEWnd, WM_IME_CONTROL, IMC_GETOPENSTATUS, 0);
+    // WriteLog(elDebug, TEXT("From Focus Handler"));
     g_CaretWnd.ChangeIMEState(ret != 0);
 
     g_CaretWnd.SetSender(sender);
@@ -377,18 +395,39 @@ void FocusChangedHandler(IUIAutomationElement* sender) {
 BOOL WINAPI Init(void) {
     config::get_instance().load_config();
 
+    DWORD dwResult = 0;
+    HKEY  hKey = NULL;
+    dwResult = ::RegOpenKeyExW(HKEY_CURRENT_USER, L"Control Panel\\Desktop", 0, KEY_QUERY_VALUE, &hKey);
+    if (dwResult != ERROR_SUCCESS) {
+        WriteLog(elError, TEXT("%s: レジストリを読み込めませんでした"), g_info.Name);
+    }
+    else {
+        // WriteLog(elDebug, TEXT("%08x"), hKey);
+        WCHAR szReadBuf[128] = L"";
+        DWORD dwReadSize = sizeof(szReadBuf);
+        dwResult = ::RegQueryValueExW(hKey, L"CursorBlinkRate", 0, NULL, (LPBYTE)szReadBuf, &dwReadSize);
+        if (dwResult != ERROR_SUCCESS) {
+            WriteLog(elError, TEXT("%s: レジストリを読み込めませんでした"), g_info.Name);
+        }
+        else {
+            g_default_blink_time = ::_wtoi(szReadBuf);
+            // WriteLog(elDebug, TEXT("%s: default blink time: %d"), g_info.Name, g_default_blink_time);
+        }
+    }
+    if (hKey) { ::RegCloseKey(hKey); }
+    if (g_default_blink_time == 0) { g_default_blink_time = 530; }
+
     g_hHook = ::SetWindowsHookEx(WH_CALLWNDPROC, CallWndProc, g_hInst, 0);
     if (!g_hHook) {
-        DWORD ret = GetLastError();
         WriteLog(elError, TEXT("%s: フックに失敗しました"), g_info.Name);
         return FALSE;
     }
 
     SYSTEM_INFO sysInfo = {};
-    GetNativeSystemInfo(&sysInfo);
+    ::GetNativeSystemInfo(&sysInfo);
 
     BOOL bIsWow64 = FALSE;
-    ATLVERIFY(IsWow64Process(GetCurrentProcess(), &bIsWow64));
+    ::IsWow64Process(GetCurrentProcess(), &bIsWow64);
 
     if ((sysInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_INTEL || bIsWow64)
         || (sysInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64 && !bIsWow64)) {
@@ -406,7 +445,9 @@ BOOL WINAPI Init(void) {
 
 // TTBEvent_Unload() の内部実装
 void WINAPI Unload(void) {
-    ::UnhookWindowsHookEx(g_hHook);
+    if (g_hHook) {
+        ::UnhookWindowsHookEx(g_hHook);
+    }
     g_hHook = nullptr;
 
     if (g_CaretWnd.IsWindow()) {
@@ -421,36 +462,35 @@ void WINAPI Unload(void) {
 //---------------------------------------------------------------------------//
 
 // TTBEvent_Execute() の内部実装
-BOOL WINAPI Execute(INT32 CmdId, HWND hWnd) {
+BOOL WINAPI Execute(INT32, HWND) {
     return TRUE;
 }
 
 //---------------------------------------------------------------------------//
 
 // TTBEvent_WindowsHook() の内部実装
-void WINAPI Hook(UINT Msg, WPARAM wParam, LPARAM lParam) {
+void WINAPI Hook(UINT, WPARAM, LPARAM) {
 }
 
-void InitCaretInfo() {
-	if (g_CaretInfo.hBmp) {
-		::DeleteObject(g_CaretInfo.hBmp);
-        g_CaretInfo.hBmp = NULL;
+void InitCaretInfo(CARET_INFO *info) {
+	if (info->hBmp) {
+		::DeleteObject(info->hBmp);
+        info->hBmp = NULL;
 	}
-    g_lockedConut = 0;
-    g_CaretInfo.bCreated = FALSE;
-    if (g_CaretInfo.args.hBmp) {
-        ::DeleteObject(g_CaretInfo.args.hBmp);
-        g_CaretInfo.hBmp = NULL;
+    info->lockedConut = 0;
+    info->bCreated = FALSE;
+    if (info->args.hBmp) {
+        ::DeleteObject(info->args.hBmp);
+        info->hBmp = NULL;
     }
-    g_CaretInfo.args.width = 0;
-    g_CaretInfo.args.height = 0;
+    info->args.width = 0;
+    info->args.height = 0;
 }
 
 BOOL IsImeEnabled(HWND hWnd) {
     DWORD Conversion = 0;
     GetConversionStatus(hWnd, &Conversion);
-    if (Conversion == IME_CMODE_ALPHANUMERIC
-        || Conversion == IME_CMODE_NOCONVERSION ) {
+    if (Conversion == IME_CMODE_ALPHANUMERIC || Conversion == IME_CMODE_NOCONVERSION ) {
         return FALSE;
     }
     return TRUE;
@@ -477,51 +517,21 @@ BOOL WINAPI IME_Status_CreateCaret(
     __in_opt HBITMAP hBitmap,
     __in int nWidth,
     __in int nHeight) {
+    // WriteLog(elDebug, TEXT("CreateCaret"));
+
+    if (hBitmap) {
+        BITMAP bmp = { 0 };
+        ::GetObjectA(hBitmap, sizeof(bmp), &bmp);
+        nWidth = bmp.bmWidth;
+        nHeight = bmp.bmHeight;
+    }
+
 	HBITMAP hMemBitmap = hBitmap;
 	HBITMAP hBmpForDelete = NULL;
 
-	HDC hDC = ::GetDC(hWnd);
-	if (hDC) {
-		HDC hMemDC = ::CreateCompatibleDC(hDC);
-		if (hMemDC) {
-			nWidth = 2;
-			COLORREF color = 0x00000000;
-			DWORD Conversion = 0;
-			if (GetConversionStatus(hWnd, &Conversion)) {
-				if (Conversion == IME_CMODE_ALPHANUMERIC
-                    || Conversion == IME_CMODE_NOCONVERSION) {
-					nWidth = 2;
-					color = 0x00000000;
-				}
-			}
-
-			hMemBitmap = ::CreateCompatibleBitmap(hDC, nWidth, nHeight);
-			hBmpForDelete = hMemBitmap;
-			if (hMemBitmap) {
-				color = ~color;
-				color &= 0x00FFFFFF;
-				HBRUSH hbr = ::CreateSolidBrush(color);
-				if (hbr) {
-					HGDIOBJ hPrevBitmap = ::SelectObject(hMemDC, hMemBitmap);
-					RECT rc;
-					rc.top = 0;
-					rc.left = 0;
-					rc.right = nWidth;
-					rc.bottom = nHeight;
-					::FillRect(hMemDC, &rc, hbr);
-					::SelectObject(hMemDC, hPrevBitmap);
-					::DeleteObject(hbr);
-				}
-			}
-			::DeleteDC(hMemDC);
-		}
-		::ReleaseDC(hWnd, hDC);
-	}
-
 	BOOL bRet = WinAPI_CreateCaret(hWnd, hMemBitmap, nWidth, nHeight);
 	if (bRet) {
-		InitCaretInfo();
-		g_wnd30C4 = hWnd;
+		InitCaretInfo(&g_CaretInfo);
 		g_CaretInfo.bCreated = TRUE;
         g_CaretInfo.hBmp = hBmpForDelete;
         g_CaretInfo.args.hBmp = hBitmap;
@@ -535,36 +545,46 @@ BOOL WINAPI IME_Status_CreateCaret(
 }
 
 BOOL WINAPI IME_Status_ShowCaret(__in_opt HWND hWnd) {
+    // WriteLog(elDebug, TEXT("ShowCaret"));
     BOOL bRet = WinAPI_ShowCaret(hWnd);
-    if (bRet && hWnd && hWnd == g_wnd30C4) {
-        ::InterlockedIncrement(&g_lockedConut);
+    if (bRet && hWnd) {
+        ::InterlockedIncrement(&g_CaretInfo.lockedConut);
     }
     return bRet;
 }
 
 BOOL WINAPI IME_Status_HideCaret(__in_opt HWND hWnd) {
+    // WriteLog(elDebug, TEXT("HideCaret"));
     BOOL bRet = WinAPI_HideCaret(hWnd);
-    if (bRet && hWnd && hWnd == g_wnd30C4) {
-        ::InterlockedDecrement(&g_lockedConut);
+    if (bRet && hWnd) {
+        ::InterlockedDecrement(&g_CaretInfo.lockedConut);
     }
     return bRet;
 }
 
+BOOL WINAPI IME_Status_DestroyCaret() {
+    // WriteLog(elDebug, TEXT("DestroyCaret"));
+
+    BOOL bRet = WinAPI_DestroyCaret();
+    return bRet;
+}
+
 BOOL WinAPI_HookManager::WinAPIHook() {
-    MH_CreateHook(static_cast<void*>(&CreateCaret),
-        static_cast<void*>(&IME_Status_CreateCaret),
-        reinterpret_cast<void**>(&WinAPI_CreateCaret));
+    MH_CreateHook(&CreateCaret, &IME_Status_CreateCaret,
+        reinterpret_cast<LPVOID*>(&WinAPI_CreateCaret));
     MH_EnableHook(&CreateCaret);
 
-    MH_CreateHook(static_cast<void*>(&ShowCaret),
-        static_cast<void*>(&IME_Status_ShowCaret),
-        reinterpret_cast<void**>(&WinAPI_ShowCaret));
+    MH_CreateHook(&ShowCaret, &IME_Status_ShowCaret,
+        reinterpret_cast<LPVOID*>(&WinAPI_ShowCaret));
     MH_EnableHook(&ShowCaret);
 
-    MH_CreateHook(static_cast<void*>(&HideCaret),
-        static_cast<void*>(&IME_Status_HideCaret),
-        reinterpret_cast<void**>(&WinAPI_HideCaret));
+    MH_CreateHook(&HideCaret, &IME_Status_HideCaret,
+        reinterpret_cast<LPVOID*>(&WinAPI_HideCaret));
     MH_EnableHook(&HideCaret);
+
+    MH_CreateHook(&DestroyCaret, &IME_Status_DestroyCaret,
+        reinterpret_cast<LPVOID*>(&WinAPI_DestroyCaret));
+    MH_EnableHook(&DestroyCaret);
 
     return TRUE;
 }
@@ -573,12 +593,13 @@ void WinAPI_HookManager::WinAPIUnHook() {
     MH_DisableHook(&CreateCaret);
     MH_DisableHook(&ShowCaret);
     MH_DisableHook(&HideCaret);
+    MH_DisableHook(&DestroyCaret);
 }
 
 //---------------------------------------------------------------------------//
 
 // DLL エントリポイント
-BOOL WINAPI DllMain(HINSTANCE hInstance, DWORD fdwReason, LPVOID lpvReserved) {
+BOOL WINAPI DllMain(HINSTANCE hInstance, DWORD fdwReason, LPVOID) {
     if (fdwReason == DLL_PROCESS_ATTACH) {
         g_hInst = hInstance;
     }

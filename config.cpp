@@ -3,8 +3,6 @@
 
 #include <strsafe.h>
 
-LPCTSTR kMutexName = TEXT("IMEStatusMutex");
-
 extern HINSTANCE    g_hInst;
 extern HANDLE       g_hShared;
 extern CONFIG_DATA  g_Config;
@@ -15,13 +13,10 @@ BOOL WritePrivateProfileInt(LPCTSTR lpAppName, LPCTSTR lpKeyName, int value, LPC
 	return ::WritePrivateProfileString(lpAppName, lpKeyName, szbuff, lpFileName);
 }
 
-config::config() : m_hMutex(NULL) {
-	m_hMutex = ::CreateMutex(nullptr, FALSE, kMutexName);
-	_ASSERT(m_hMutex);
+config::config() {
 }
 
 config::~config() {
-	::CloseHandle(m_hMutex);
 }
 
 config& config::get_instance() {
@@ -30,8 +25,6 @@ config& config::get_instance() {
 }
 
 void config::load_config() {
-	mutex_locker lock(m_hMutex);
-
 	TCHAR inipath[MAX_PATH];
 	size_t len = ::GetModuleFileName(g_hInst, inipath, MAX_PATH);
 
@@ -44,6 +37,6 @@ void config::load_config() {
 		inipath[len - 3] = L'i';
 	}
 
-	g_Config.on = ::GetPrivateProfileInt(TEXT("Setting"), TEXT("On"), 1000, inipath);
-	g_Config.off = ::GetPrivateProfileInt(TEXT("Setting"), TEXT("Off"), 5000, inipath);
+	g_Config.on = ::GetPrivateProfileInt(TEXT("Setting"), TEXT("On"), 200, inipath);
+	g_Config.off = ::GetPrivateProfileInt(TEXT("Setting"), TEXT("Off"), 530, inipath);
 }
